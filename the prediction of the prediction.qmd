@@ -1,0 +1,140 @@
+--- 
+title: "The prediction of the prediction"
+format: html
+editor: visual
+toc: true
+toc-location: left
+toc-depth: 3
+theme: ceroulean
+author: 
+- Inês Ramos 
+---
+
+<div style="text-align: justify">
+```{r}
+#knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Project Question
+
+The everlasting interest in predicting events can help us explain the uncountable models one can find to forecast elections, sales, and all sorts of issues that can directly impact our society. And even though such models can be simple and still very reliable, some of them are sophisticated and only handled by forecasting experts. There is, however, another way to get a forecast: instead of asking an expert, one could ask a crowd. The wisdom of crowds is the simple notion that "the many think smarter than the few" and has been proven true in several cases and examples. The questions that then arise are: Is this always true or only applies in some cases? And what defines such cases? When should one ask a crowd about something one wants to predict? And when should one not?
+
+## The Dataset
+
+### Source
+
+Metaculus is what one could consider a Prediction Market, but with questions that englobe a much wider variety of themes and categories than stock market-oriented questions. The company believes "Collective intelligence can help solve complex problems." If we visit the website, we encounter many interesting questions to which a whole community of forecasters try to answer.
+
+**Log Score is the variable to predict. But what does it tmean?**
+
+It is important to note that the forecast 'unit' are always either a probability with which the forecaster believes the event will occur for the yes or no questions, or a probability density to continuous questions, as is shown here: [An example for you to try it out](https://www.metaculus.com/questions/15416/how-many-fdic-banks-will-fail-in-2023/)
+
+![My prediction](make%20a%20prediction.png) If this was to be our prediction to the question "How many FDIC banks will fail in 2023?", we would be affirming that we believe that it will be no more than 6, nor less than 2, and most likely to be around 4.
+
+After knowing the resolution to such questions, the resolution value and the community prediction are compared to see how well the community went. For this, a log score is calculated according to the type of question, and considering the answer as p:
+
+1.  Question type: Binary (Will X happen?)
+
+    Forecast type (answer): p = probability with which X will happen (0 to 1).
+
+    Log score: $$ S = log_2p+1 $$if the event occured and $$ S = log_2(1-p)+1 $$ if not.
+
+2.  Question type: Continuous (When will X happen? or How much/many will be X?)
+
+    Forecast type (answer): p = probability with which X will happen (0 to 1).
+
+    Log score: $$
+    S = log_2p+1 $$
+
+    (in this equation p is the probability the community assigned to the value that resolved the issue)
+
+### Description and features
+
+The extracted data, after cleaned, has 1802 observations and each element consists of a predicted event that contains the following attributes (4 explanatory variables and 1 variable to predict):
+
+**Tittle** Not a variable obviously but nice to inspect elements;
+
+**Number of predictions;**
+
+**Number of Forecasters:** Turns out one person can make more than one prediction;
+
+**Active State (Not really a feature):** All lines corresponds to resolved issues, i.e events predicted of which we already know the resolution, since this are the only type of ocurrences we can use to train our model); Category: 33 different categories;
+
+**Possible Formats:** This is either numerical, date, or binary;
+
+**Log Score:** Metaculus provides with a score calculated differently for each type of question, measuring how accurately the community guessed: this the variable we indirectly want to predict.
+
+### Getting the data
+
+Metaculus provides an application programming interface (API) which makes life easier. On the API each question as an aspect like an object of the type dictionary, so when we use the pyhton libraries requests (to request acess to the api to the website using a token provided by metaculus), and JSON, referring to the typical language of APIs, we become able to attach each question to our dataset, keeping only the keys that contributte to the study, sometimes even defining the key value of interest, as it is the case for the active state of the question, as meantioned before. Take the question "Will the world be more democratic in 2022 than in 2017?" as an example: Website Link https://www.metaculus.com/questions/590 API Link https://www.metaculus.com/api2/questions/590 Using a loop, we are able to visit each question's API link, and retrieve the information needed.
+
+```{pyhton}
+#| eval : false
+import requests
+import json
+import pandas as pd
+url = "https://www.metaculus.com/api2/questions/{id}/"
+headers = {"Authorization": "Token"}
+for i in range(1,15205): 
+    result = requests.get(("https://www.metaculus.com/api2/questions/"+str(i)), headers)
+    question = result.json()
+```
+
+The object 'question' is of type dictionary, so to specify resolved issues we can specify a key value of interest, and then what keys we want to keep, independently of their value (our variables) as I did inside the loop:
+
+```{python}
+#| eval : false
+for i in range(1,15205): 
+    result = requests.get(("https://www.metaculus.com/api2/questions/"+str(i)), headers)
+    question = result.json()
+    if question != {"detail":"Not found."} and 'RESOLVED' in question.values():
+        print(i)
+        r = {key: question[key] for key in question.keys()
+                 & {'id','active_state','title','resolution', 'possibilities','resolve_time','type',
+                  'number_of_forecasters','number_of_predictions','categories','community_absolute_log_score'}}
+        r2 = pd.json_normalize(r, sep='_')
+        f2 = pd.concat([f2,r2])
+```
+
+json_normalize provides a simple way to turn dictionaries that are values of a key into new columns, which was useful to separate categories from subcategories. Lastly I add the 'cleaned' object (the question) to my empty dataframe. After this, the loop adds the following questions that satisfy the condition, where I ended up with over 2000 observations.
+
+### Cleaning the data
+
+Once it was possible to specify the characteristics that I wanted to retrieve of each question, the dataset is almost ready to be used. While looking at the data and inspecting its elements, simple steps were yeat to be taken:
+
+Cleaning consisted of looking at the variabales values, understanding the NaN entries and dropping columns.
+
+#### Variables that ended up not being useful (dropped columns):
+
+*Resolve_time:* when compared to the publishing time, this is an interesting variable to take into consideration, yet not applicable to every type of question, since that on questions where the crowds are predicting dates, the resolve time is the prediction itself (hence, it could not be explanatory).
+
+*Resolution* and *Prediction:* Thankfully, Metaculus provides a log score (to be explained), so to compare these two variables is no longer necessary, we don't even need to know their value!
+
+*Subategory*: Categories are useful and I am keeping them. On the contrary, subcategories were considered too many to interest the study. Furthermore, if we were to consider subcategories the dataset would be 500 observations shorter, since this attribute is not always specified.
+
+#### Missing Values:
+
+Community_log_score: some entries had missing values because some events are of unsure resolution. For this reason, we can't compare the predicted value with the resolution value since there is none. Therefore, a log score is not possible to obtain. Such lines were dropped.
+
+Category: 43 instances did not have a category, which is crucial to our study, so those were dropped as well.
+
+#### Feature Engineering
+
+The variables number of forecasts and number of predictions are, obviously, related. For this reason, it was considered interesting to create a new column resulting of the following quotient: $$ n = predictions/forecasters $$, Which allow us to get an average number of predictions per forecaster per question.
+
+## Visualization
+
+### Categorical Variables
+```{r, echo=FALSE}
+df = read.csv('data/superfinal.csv')
+library(ggplot2)
+```
+```{r, echo=FALSE}
+
+# create frequency table
+freq_table_t <- table(df$possibilities_type)
+
+# create bar plot
+barplot(freq_table_t, xlab = "Possibilities Type", ylab = "Count")
+
+```
